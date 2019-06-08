@@ -6,6 +6,8 @@ lucene 官网：http://lucene.apache.org/
 
 luke github官网：<https://github.com/DmitryKey/luke/releases>
 
+lucene 8.1.1 官方文档：<https://lucene.apache.org/core/8_1_1/index.html>
+
 ## 实现索引流程
 
 1. 采集数据
@@ -243,7 +245,212 @@ public void updateIndexTest() throws IOException {
 }
 ```
 
+## lucene 提供两种查询方式
 
+### commonSearch
 
+```java
+/**
+ * 通用查询
+ * @param query
+ * @param num
+ * @return
+ * @throws IOException
+ */
+public List<Book> commonSearch(Query query, int num) throws IOException {
+    // 1.Query 查询条件传入
+    // 2. 创建 Directory 流对象，声明索引的位置
+    String path = "T:/Tools/luke/Workspace";
+    Directory directory = FSDirectory.open(new File(path + "/lucene").toPath());
+    // 3. 创建索引读取对象 IndexReader
+    IndexReader indexReader = DirectoryReader.open(directory);
+    // 4. 创建索引搜索对象 IndexSearch
+    IndexSearcher indexSearcher = new IndexSearcher(indexReader);
+    // 5. 使用索引搜索对象，执行搜索，返回结果集 TopDocs，默认查询 1000 条
+    TopDocs topDocs = indexSearcher.search(query, num);
+    // 6. 解析结果集
+    ScoreDoc[] scoreDocs = topDocs.scoreDocs;
+    Set<Book> searchBooks = new HashSet<>();
+    for (ScoreDoc scoreDoc : scoreDocs) {
+        Document document = indexSearcher.doc(scoreDoc.doc);
 
+        Book bookTemp = new Book();
+        if (null != document.get("id") && !"".equals(document.get("id"))){
+            bookTemp.setId(Integer.valueOf(document.get("id")));
+        }
+        if (null != document.get("name")){
+            bookTemp.setName(document.get("name"));
+        }
+        if (null != document.get("price") && !"".equals(document.get("price"))){
+            bookTemp.setPrice(Double.valueOf(document.get("price")));
+        }
+        if (null != document.get("pic")){
+            bookTemp.setPic(document.get("pic"));
+        }
+        if (null != document.get("description")){
+            bookTemp.setDescription(document.get("description"));
+        }
+
+        searchBooks.add(bookTemp);
+    }
+    // 7. 释放资源
+    indexReader.close();
+    List<Book> books = new ArrayList<>(searchBooks);
+    return books;
+}
+```
+
+### 使用 lucene 提供 Query 子类
+
+#### TermQuery
+
+> TermQuery 词项查询，TermQuery 不适用分词器，搜索关键字进行精确匹配 Field 域中的词
+
+```java
+/**
+ * 使用 TermQuery 查询
+ * @param field
+ * @param searchKey
+ * @param num
+ * @return
+ * @throws ParseException
+ * @throws IOException
+ */
+public List<Book> searchByTermQuery(String field, String searchKey, int num) throws ParseException, IOException {
+    // 1. 创建 Query 对象
+    Query query = new TermQuery(new Term(field, searchKey));
+
+    List<Book> books = commonSearch(query, num);
+    return books;
+}
+```
+
+#### BooleanQuery
+
+```java
+/**
+ * 使用 BooleanQuery
+ * @return
+ * @throws IOException
+ */
+public List<Book> searchBooleanQuery() throws IOException {
+    BooleanQuery.Builder builder = new BooleanQuery.Builder();
+    builder.add(new TermQuery(new Term("name", "君")), BooleanClause.Occur.SHOULD);
+    builder.add(new TermQuery(new Term("name", "spring")), BooleanClause.Occur.SHOULD);
+
+    List<Book> books = commonSearch(builder.build(), 100);
+    return books;
+}
+```
+
+* MUST 和 MUST 的关系：表示与关系，即交集
+* MUST 和 MUST_NOT 的关系：包含前者，不包含后者
+* MUST_NOT 和 MUST_NOT 的关系：没有意义
+* SHOULD 和 MUST 的关系：MUST，SHOULD没有意义
+* SHOULD 和 MUST_NOT 的关系：相当于 MUST 和 MUST_NOT
+* SHOULD 和 SHOULD 的关系：表示或关系，即并集
+
+### 使用 QueryParse 解析查询表达式
+
+#### 基础语法
+
+1. 关键字查询：
+
+   
+
+   ```
+   语法：域名 + ":" + 搜索关键字
+   例如：name:java
+   ```
+
+2. 范围查询
+
+   ```
+   语法：域名 + ":" + [最小值 TO 最大值]
+   例如：size:[1 TO 10]
+   ```
+
+3. 组合条件查询
+
+   ```
+   BooleanClause.Occur.MUST_NOT 相当于 ！
+   BooleanClause.Occur.MUST 相当于 AND
+   BooleanClause.Occur.SHOULD 相当于 OR
+   ```
+
+#### PhraseQuery
+
+```java
+/**
+ * QueryParser 查询
+ * @return
+ * @throws ParseException
+ * @throws IOException
+ */
+public List<Book> searchQueryParser() throws ParseException, IOException {
+    Analyzer analyzer = new StandardAnalyzer();
+    // 第一个参数表示默认查询域，第二个参数表示分词器
+    QueryParser queryParser = new QueryParser("name", analyzer);
+    Query parse = queryParser.parse("name:spring");
+    return commonSearch(parse, 100);
+}
+```
+
+#### MultiPhraseQuery 
+
+```java
+/**
+ * MultiFieldQueryParser 查询
+ * @return
+ * @throws ParseException
+ */
+public List<Book> searchMultiFieldQueryParser() throws ParseException, IOException {
+    String[] fields = {"name", "desc"};
+    Analyzer analyzer = new StandardAnalyzer();
+    MultiFieldQueryParser multiFieldQueryParser = new MultiFieldQueryParser(fields, analyzer);
+    Query query = multiFieldQueryParser.parse("spring");
+    return commonSearch(query, 100);
+}
+```
+
+## TopDocs
+
+lucene 搜索结果可通过 TopDocs 遍历，TopDocs 类提供少量属性
+
+| 方法或者属性 |          说明          |
+| :----------: | :--------------------: |
+|  totalHits   | 匹配搜索条件的总记录数 |
+|  scoreDocs   |      顶部匹配记录      |
+
+## 相关度排序
+
+### 什么是相关度排序
+
+> 相关度排序就是查询结果按照与查询关键字的相关性进行排序，越相关的越靠前
+
+### 相关度打分
+
+Licene 对查询关键字和索引文档的相关度进行打分，得分高的就排在前面。
+
+如何打分呢？ Lucene 是在用户进行检索式实时根据搜索的关键字计算出来的，分两步
+
+1. 计算出词（Term）的权重
+2. 根据词的权重值，计算文档相关度得分
+
+### 什么是词的权重
+
+通过索引部分的学习，明确索引的最小单位是一个Term(索引词典中的一个词)。搜索也是从索引域中查询Term，再根据Term找到文档。Term对文档的重要性称为权重，影响Term权重有两个因素：
+
+* Term Frequency (tf)：
+  指此Term在此文档中出现了多少次。tf 越大说明越重要。 词(Term)在文档中出现的次数越多，说明此词(Term)对该文档越重要，如“Lucene”这个词，在文档中出现的次数很多，说明该文档主要就是讲Lucene技术的。
+* Document Frequency (df)：
+  指有多少文档包含此Term。df 越大说明越不重要。比如，在一篇英语文档中，this出现的次数更多，就说明越重要吗？不是的，有越多的文档包含此词(Term), 说明此词(Term)太普通，不足以区分这些文档，因而重要性越低。
+
+### 加权查询
+
+TODO
+
+### 高亮查询
+
+TODO
 

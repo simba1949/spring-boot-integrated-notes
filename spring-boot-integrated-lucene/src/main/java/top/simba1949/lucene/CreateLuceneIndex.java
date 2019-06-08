@@ -53,7 +53,8 @@ public class CreateLuceneIndex {
 			// 图片：不分词、不索引、存储
 			document.add(new StoredField("pic", item.getPic()));
 			// 详情：分词，索引，不存储
-			document.add(new TextField("description", item.getDescription(), Field.Store.NO));
+			TextField descriptionField = new TextField("description", item.getDescription(), Field.Store.NO);
+			document.add(descriptionField);
 
 			documents.add(document);
 		}
