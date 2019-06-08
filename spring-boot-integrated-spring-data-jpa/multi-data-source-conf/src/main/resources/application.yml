@@ -1,0 +1,22 @@
+server:
+  port: 8081
+# 自定义数据源设置
+datasource:
+  # 数据源一配置
+  search:
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/search?characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 19491001
+  # 数据源二配置
+  rbac:
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/rbac?characterEncoding=utf-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 19491001
+spring:
+  jpa:
+    hibernate:
+      # 方言设置
+      dialect:
+        search: org.hibernate.dialect.MySQLDialect
